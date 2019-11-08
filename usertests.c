@@ -38,6 +38,24 @@ iputtest(void)
   printf(stdout, "iput test ok\n");
 }
 
+
+void
+infotest_numsyscalls()
+{
+    int num_1 = info(2);
+    int num_2 = info(2);
+    printf(stdout, "Number of syscalls: %d vs %d\n", num_1, num_2);
+    int num_3 = info(2);
+    printf(stdout, "Number of syscalls: %d \n", num_3);
+}
+
+void
+infotest(int option) 
+{
+   int num = info(option);
+   printf(stdout, "InfoTest Option %d: %d \n",option, num);
+}
+
 // does exit() call iput(p->cwd) in a transaction?
 void
 exitiputtest(void)
@@ -1755,7 +1773,12 @@ main(int argc, char *argv[])
     exit();
   }
   close(open("usertests.ran", O_CREATE));
-
+  infotest_numsyscalls();
+  infotest(1);
+  infotest(2);
+  infotest(3);
+  infotest(2);
+/*
   argptest();
   createdelete();
   linkunlink();
@@ -1798,6 +1821,6 @@ main(int argc, char *argv[])
   uio();
 
   exectest();
-
+*/
   exit();
 }

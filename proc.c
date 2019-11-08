@@ -532,3 +532,35 @@ procdump(void)
     cprintf("\n");
   }
 }
+
+
+int info(int option) 
+{
+    int count = 0;
+    struct proc *p;
+    switch(option)
+    {
+        case 1:
+            //go through p table 
+            acquire(&ptable.lock);
+            for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+            {
+                if(p->state != UNUSED)
+                count++;
+            }
+            release(&ptable.lock);
+            return count;
+            break;
+        case 2:
+            p = myproc();
+            return p->numsyscalls;
+            break;
+        case 3:
+            p = myproc();
+//            pde_t* pgdir = p->pgdir; 
+            uint sz = p->sz;
+            return sz/4096;
+            break;
+    }
+    return 0;
+}
