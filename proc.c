@@ -111,7 +111,6 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
-
   return p;
 }
 
@@ -139,6 +138,9 @@ userinit(void)
   p->tf->esp = PGSIZE;
   p->tf->eip = 0;  // beginning of initcode.S
 
+  p->numcalled = 0;
+  p->numsyscalls = 0;
+  p->numtickets = 10;
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
 
@@ -215,21 +217,43 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
-
+  np->numcalled = 0;
+  np->numsyscalls = 0;
+  np->numtickets = 10;
   release(&ptable.lock);
 
   return pid;
 }
 
-// Exit the current process.  Does not return.
-// An exited process remains in the zombie state
-// until its parent calls wait() to find out it exited.
 void
 exit(void)
 {
   struct proc *curproc = myproc();
   struct proc *p;
   int fd;
+
+  /*-------The following code is added to format the output--------*/
+  /* NOTE that you need to replace sched_times in the cprintf with whatever you use to record the execution time */
+  static char *states[] = {
+  [UNUSED]    "unused",
+  [EMBRYO]    "embryo",
+  [SLEEPING]  "sleep ",
+  [RUNNABLE]  "runble",
+  [RUNNING]   "run   ",
+  [ZOMBIE]    "zombie"
+  };
+  char *state;
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->state == UNUSED)
+      continue;
+    if(p->state >= 0 && p->state < NELEM(states) && states[p->state])
+      state = states[p->state];
+    else
+      state = "???";
+    
+    cprintf("From  %s-%d: %d %s %s sched_times=%d ticket=%d \n", myproc()->name, myproc()->pid, p->pid, state, p->name, p->numcalled, p->numtickets);
+  }
+  /*------------------patch end------------------------ */
 
   if(curproc == initproc)
     panic("init exiting");
@@ -262,10 +286,30 @@ exit(void)
   }
 
   // Jump into the scheduler, never to return.
+
   curproc->state = ZOMBIE;
   sched();
   panic("zombie exit");
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
@@ -311,6 +355,82 @@ wait(void)
   }
 }
 
+
+
+/* 
+*  Using the LCG algorithm for pseudorandom numbers we can use this to select a random ticket.
+*  Algorithm from wikipedia and we will be using gcc's parameters
+*/
+unsigned seed = 0;
+unsigned m = 2<<30;
+unsigned a = 1103515245;
+unsigned c = 12345;
+unsigned rand()
+{
+  seed = (a*seed + c) % m;
+  return seed;
+}
+
+
+
+
+void
+scheduler(void)
+{
+  struct proc *p;
+  struct cpu *c = mycpu();
+  c->proc = 0;
+  int total_tickets = 0;
+  timerinit();
+  for(;;) {
+    acquire(&ptable.lock);
+    for(p=ptable.proc; p < &ptable.proc[NPROC]; p++)
+    {
+      if(p->state != RUNNABLE)
+        continue;
+      total_tickets += p->numtickets;
+    }
+    release(&ptable.lock);
+    if(total_tickets == 0)
+      continue;
+    unsigned winning = rand() % total_tickets;
+    total_tickets = 0;
+    sti();//enable interrupts
+    acquire(&ptable.lock);
+    
+    for(p=ptable.proc; p < &ptable.proc[NPROC]; p++)
+    {
+      if(p->state != RUNNABLE)
+        continue;
+      total_tickets += p->numtickets;
+      if(total_tickets > winning)
+      {
+        // cprintf("Proc schedlued \n");
+        c->proc = p;
+        p->numcalled++;
+        switchuvm(p);
+        p->state = RUNNING;
+        // trigger timed interrupt 100ms from now here?
+
+        swtch(&(c->scheduler), p->context);
+        switchkvm();
+        c->proc = 0;
+        break;
+      }
+        // break;
+    }
+    release(&ptable.lock);
+  total_tickets = 0;
+  }
+}
+
+//set tickets
+void settickets(int num)
+{
+  struct proc *p = myproc();
+  p->numtickets = num;
+}
+
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -319,41 +439,41 @@ wait(void)
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
-void
-scheduler(void)
-{
-  struct proc *p;
-  struct cpu *c = mycpu();
-  c->proc = 0;
+// void
+// scheduler(void)
+// {
+//   struct proc *p;
+//   struct cpu *c = mycpu();
+//   c->proc = 0;
   
-  for(;;){
-    // Enable interrupts on this processor.
-    sti();
+//   for(;;){
+//     // Enable interrupts on this processor.
+//     sti();
 
-    // Loop over process table looking for process to run.
-    acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
+//     // Loop over process table looking for process to run.
+//     acquire(&ptable.lock);
+//     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+//       if(p->state != RUNNABLE)
+//         continue;
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
+//       // Switch to chosen process.  It is the process's job
+//       // to release ptable.lock and then reacquire it
+//       // before jumping back to us.
+//       c->proc = p;
+//       switchuvm(p);
+//       p->state = RUNNING;
 
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
+//       swtch(&(c->scheduler), p->context);
+//       switchkvm();
 
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
-    }
-    release(&ptable.lock);
+//       // Process is done running for now.
+//       // It should have changed its p->state before coming back.
+//       c->proc = 0;
+//     }
+//     release(&ptable.lock);
 
-  }
-}
+//   }
+// }
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state. Saves and restores

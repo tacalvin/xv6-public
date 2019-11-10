@@ -23,6 +23,7 @@ OBJS = \
 	sysfile.o\
 	sysproc.o\
 	trapasm.o\
+	timer.o\
 	trap.o\
 	uart.o\
 	vectors.o\
@@ -176,9 +177,13 @@ UPROGS=\
 	_ls\
 	_mkdir\
 	_rm\
+	_prog\
 	_sh\
 	_stressfs\
 	_usertests\
+	_p1\
+	_p2\
+	_p3\
 	_wc\
 	_zombie\
 
@@ -250,6 +255,7 @@ qemu-nox-gdb: fs.img xv6.img .gdbinit
 EXTRA=\
 	mkfs.c ulib.c user.h cat.c echo.c forktest.c grep.c kill.c\
 	ln.c ls.c mkdir.c rm.c stressfs.c usertests.c wc.c zombie.c\
+	p1.c p2.c p3.c prog.c\
 	printf.c umalloc.c\
 	README dot-bochsrc *.pl toc.* runoff runoff1 runoff.list\
 	.gdbinit.tmpl gdbutil\

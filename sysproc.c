@@ -98,3 +98,13 @@ sys_info(void)
        return -1;
    return info(n);
 }
+
+int
+sys_settickets(void)
+{
+  int n;
+  if(argint(0, &n) < 0)
+    return -1;
+  settickets(n);
+  return 0;
+}
