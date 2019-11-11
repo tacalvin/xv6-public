@@ -13,7 +13,7 @@ struct {
 } ptable;
 
 static struct proc *initproc;
-
+int totaltickets = 0;
 int nextpid = 1;
 extern void forkret(void);
 extern void trapret(void);
@@ -140,7 +140,10 @@ userinit(void)
 
   p->numcalled = 0;
   p->numsyscalls = 0;
-  p->numtickets = 10;
+  p->numtickets = 10.0;
+  totaltickets += p->numtickets;
+  p->stride = totaltickets / p->numtickets;
+  p->curr_stride = totaltickets / p->numtickets;
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
 
@@ -220,7 +223,13 @@ fork(void)
   np->numcalled = 0;
   np->numsyscalls = 0;
   np->numtickets = 10;
+  totaltickets += np->numtickets;
+  np->stride = totaltickets/np->numtickets;
+  np->curr_stride = totaltickets/np->numtickets;
+  np->totalcache = totaltickets;
   release(&ptable.lock);
+  curproc->totalcache = totaltickets;
+  curproc->stride = totaltickets/curproc->numtickets;
 
   return pid;
 }
@@ -250,8 +259,8 @@ exit(void)
       state = states[p->state];
     else
       state = "???";
-    
-    cprintf("From  %s-%d: %d %s %s sched_times=%d ticket=%d \n", myproc()->name, myproc()->pid, p->pid, state, p->name, p->numcalled, p->numtickets);
+    cprintf("From  %s-%d: %s-%d %s sched_times=%d ticket=%d stride=%d\n", myproc()->name, myproc()->pid, p->name, p->pid, state, p->numcalled, p->numtickets, p->stride);
+    // cprintf("From  %s-%d: %d %s %s sched_times=%d ticket=%d \n", myproc()->name, myproc()->pid, p->pid, state, p->name, p->numcalled, p->numtickets);
   }
   /*------------------patch end------------------------ */
 
@@ -284,7 +293,6 @@ exit(void)
         wakeup1(initproc);
     }
   }
-
   // Jump into the scheduler, never to return.
 
   curproc->state = ZOMBIE;
@@ -339,6 +347,7 @@ wait(void)
         p->name[0] = 0;
         p->killed = 0;
         p->state = UNUSED;
+        totaltickets -= p->numtickets;
         release(&ptable.lock);
         return pid;
       }
@@ -373,54 +382,59 @@ unsigned rand()
 
 
 
-
 void
 scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
-  int total_tickets = 0;
   timerinit();
   for(;;) {
-    acquire(&ptable.lock);
-    for(p=ptable.proc; p < &ptable.proc[NPROC]; p++)
-    {
-      if(p->state != RUNNABLE)
-        continue;
-      total_tickets += p->numtickets;
-    }
-    release(&ptable.lock);
-    if(total_tickets == 0)
-      continue;
-    unsigned winning = rand() % total_tickets;
-    total_tickets = 0;
     sti();//enable interrupts
     acquire(&ptable.lock);
-    
+    struct proc *minP = 0;
     for(p=ptable.proc; p < &ptable.proc[NPROC]; p++)
     {
       if(p->state != RUNNABLE)
         continue;
-      total_tickets += p->numtickets;
-      if(total_tickets > winning)
+      if(p->totalcache != totaltickets)
       {
-        // cprintf("Proc schedlued \n");
-        c->proc = p;
-        p->numcalled++;
-        switchuvm(p);
-        p->state = RUNNING;
-        // trigger timed interrupt 100ms from now here?
-
-        swtch(&(c->scheduler), p->context);
-        switchkvm();
-        c->proc = 0;
-        break;
+        p->stride = totaltickets/p->numtickets;
+        p->totalcache = totaltickets;
       }
-        // break;
+      if(minP == 0)
+      {
+        minP = p;
+      }
+      if(p->curr_stride < minP->curr_stride)
+      {
+        minP = p;
+      }
+
+    }
+    if(minP != 0)
+    {
+      // cprintf("Scheduled %s-%d with pass %d and stride %d \n", minP->name, minP->pid, minP->curr_stride, minP->stride);
+      p = minP;
+      p->curr_stride += p->stride;
+      c->proc = p;
+      p->numcalled++;
+      switchuvm(p);
+      p->state = RUNNING;
+    // trigger timed interrupt 100ms from now here?
+
+      swtch(&(c->scheduler), p->context);
+      switchkvm();
+      c->proc = 0;
+      if(p->name[0] == 'p')
+        {
+          if(p->pid != 3)
+          {
+              cprintf("#-%s-%d-%d-%d\n",p->name, p->pid, p->numcalled, p->numtickets);
+          } 
+        }
     }
     release(&ptable.lock);
-  total_tickets = 0;
   }
 }
 
@@ -428,7 +442,10 @@ scheduler(void)
 void settickets(int num)
 {
   struct proc *p = myproc();
+  totaltickets += num - p->numtickets;
   p->numtickets = num;
+  p->totalcache = totaltickets;
+  p->stride = totaltickets/num;
 }
 
 //PAGEBREAK: 42

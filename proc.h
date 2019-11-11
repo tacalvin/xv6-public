@@ -52,6 +52,9 @@ struct proc {
   int numsyscalls;
   int numtickets;              // Number of tickets for scheduler
   int numcalled;
+  unsigned stride;
+  unsigned curr_stride;
+  unsigned totalcache;
 };
 
 // Process memory is laid out contiguously, low addresses first:
