@@ -21,7 +21,7 @@ int Scheduler(void)
 
     /*Replace YOUR_SYSCALL_TO_ASSIGN_TICKET with what you implement to assign ticket */
     settickets(60);
-    for (i = 2; i >= 0; i--)
+    for (i = 0; i < 3; i++)
     {
         pid = fork();
         if (pid > 0)
@@ -31,7 +31,7 @@ int Scheduler(void)
         else if (pid == 0)
         {
 
-            settickets(30 + 10 * i);
+            settickets(30 - 10 * i);
             for (j = 0; j < 50000; j++)
             {
                 for (k = 0; k < 50000; k++)

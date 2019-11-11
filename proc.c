@@ -405,7 +405,6 @@ scheduler(void)
       total_tickets += p->numtickets;
       if(total_tickets > winning)
       {
-        // cprintf("Proc schedlued \n");
         c->proc = p;
         p->numcalled++;
         switchuvm(p);
@@ -415,6 +414,13 @@ scheduler(void)
         swtch(&(c->scheduler), p->context);
         switchkvm();
         c->proc = 0;
+        if(p->name[0] == 'p')
+        {
+          if(p->pid != 3)
+          {
+              cprintf("#-%s-%d-%d-%d\n",p->name, p->pid, p->numcalled, p->numtickets);
+          } 
+        }
         break;
       }
         // break;
